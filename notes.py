@@ -33,7 +33,7 @@ class NoteEditor(QTextEdit):
         self._C = C
         self.setAcceptRichText(True)
         # Placeholder only when truly empty (no text, no list)
-        self.setPlaceholderText("Notes…  — space for bullet  ·  Tab to sub-indent")
+        self.setPlaceholderText("Notes…")
         self._debounce = QTimer()
         self._debounce.setSingleShot(True)
         self._debounce.timeout.connect(self.content_changed.emit)
@@ -47,7 +47,7 @@ class NoteEditor(QTextEdit):
         if self.document().characterCount() > 1:
             self.setPlaceholderText("")
         else:
-            self.setPlaceholderText("Notes…  — space for bullet  ·  Tab to sub-indent")
+            self.setPlaceholderText("Notes…")
         self._debounce.start(300)
 
     def keyPressEvent(self, event):

@@ -340,6 +340,14 @@ class PanelStorage(QWidget):
         pr_l.addWidget(browse_btn)
 
         layout.addWidget(path_row)
+        layout.addWidget(sep(C))
+        layout.addWidget(section_lbl("MAINTENANCE", C))
+
+        rebuild_btn = QPushButton("Reinstall / Update")
+        rebuild_btn.setToolTip("Runs install.sh to copy latest files to ~/.local/share/timesheet")
+        rebuild_btn.clicked.connect(self._rebuild)
+        layout.addWidget(rebuild_btn)
+
         layout.addStretch()
 
     def _browse(self):
@@ -350,6 +358,22 @@ class PanelStorage(QWidget):
     def get_values(self) -> dict:
         return {"data_dir": self.data_dir.text().strip()}
 
+    def _rebuild(self):
+        import subprocess, os
+        from pathlib import Path
+        install_sh = Path(__file__).parent / "install.sh"
+        if not install_sh.exists():
+            return
+        result = subprocess.run(
+            ["bash", str(install_sh)],
+            cwd=str(install_sh.parent),
+            capture_output=True, text=True
+        )
+        from PyQt6.QtWidgets import QMessageBox
+        if result.returncode == 0:
+            QMessageBox.information(self, "Done", "Reinstall complete.")
+        else:
+            QMessageBox.warning(self, "Error", result.stderr or "install.sh failed")
 
 # ── Main dialog ────────────────────────────────────────────────────────────────
 class SettingsDialog(QDialog):

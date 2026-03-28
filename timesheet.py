@@ -931,7 +931,7 @@ class TimesheetApp(QMainWindow):
         self.progress_bar.setTextVisible(False)
         self.progress_bar.setStyleSheet(f"""
             QProgressBar {{
-                background: {C['border']};
+                background: {C['bg']};
                 border: none; border-radius: 2px;
             }}
         """)
@@ -1089,9 +1089,17 @@ class TimesheetApp(QMainWindow):
         remaining = max(0, target_mins - total)
         color     = C['green'] if pct >= 100 else (C['orange'] if pct >= 60 else C['red'])
 
-        self.progress_bar.setStyleSheet(
-            f"QProgressBar::chunk {{ background: {color}; border-radius: 2px; }}"
-        )
+        self.progress_bar.setStyleSheet(f"""
+            QProgressBar {{
+                background: {C['bg']};
+                border: none;
+                border-radius: 2px;
+            }}
+            QProgressBar::chunk {{
+                background: {color};
+                border-radius: 2px;
+            }}
+        """)
         self.progress_bar.setValue(pct)
         self.progress_lbl.setTextFormat(Qt.TextFormat.RichText)
         self.progress_lbl.setText(
@@ -1129,6 +1137,22 @@ class TimesheetApp(QMainWindow):
         state = self._settings.get("us_state", "CA")
         self.earnings_lbl.setText(f"~${net:,.2f} net  ·  ${gross:,.2f} gross  ({state})")
 
+    def _get_days_remaining(self) -> int:
+        """Returns number of calendar days left until (and including) the deadline day."""
+        today = date.today()
+        try:
+            end = date.fromisoformat(self._current_sheet["end_date"])
+            deadline_day_name = self._current_sheet.get("deadline_day", "tuesday").lower()
+            # Find the deadline date within the sheet week
+            days_map = {"monday":0,"tuesday":1,"wednesday":2,"thursday":3,"friday":4,"saturday":5,"sunday":6}
+            start = date.fromisoformat(self._current_sheet["start_date"])
+            target_weekday = days_map.get(deadline_day_name, 1)
+            deadline_date = start + timedelta(days=(target_weekday - start.weekday()) % 7)
+            days_left = (deadline_date - today).days
+            return max(1, days_left)
+        except Exception:
+            return 1
+    
     def _refresh_marquee(self):
         total       = sum(col.get_total_minutes() for col in self._columns)
         target_mins = int(self._current_sheet.get("target_hours", 40.0) * 60)
@@ -1144,8 +1168,12 @@ class TimesheetApp(QMainWindow):
         if net > 0:
             parts.append(f"~${net:,.2f} net earned")
         if remaining > 0 and hrs_til > 0:
-            per_day = remaining / max(1, hrs_til / 8)
-            parts.append(f"~{D.format_hm_pretty(int(per_day))}/day to finish")
+            days_left = self._get_days_remaining()
+            per_day = remaining / days_left
+            deadline_day = self._current_sheet.get("deadline_day", "tuesday").capitalize()
+            parts.append(
+                f"~{D.format_hm_pretty(int(per_day))}/day to hit target by {deadline_day}"
+            )
 
         self._marquee.set_text("   ·   ".join(parts))
 
@@ -1191,11 +1219,11 @@ class TimesheetApp(QMainWindow):
         if remaining == 0:
             self._toast.show_toast("Target reached — great work!", "success")
         else:
-            days    = max(1, round(hrs_til / 8))
-            per_day = remaining / days
+            days_left = self._get_days_remaining()
+            per_day = remaining / days_left
             self._toast.show_toast(
                 f"{D.format_hm_pretty(remaining)} left · {today_name} · "
-                f"{D.format_hm_pretty(int(per_day))}/day to hit {deadline}", "info"
+                f"{D.format_hm_pretty(int(per_day))}/day to hit goal by {deadline}", "info"
             )
 
     # ── Notes ──────────────────────────────────────────────────────────────────
@@ -1320,7 +1348,7 @@ class TimesheetApp(QMainWindow):
             from reportlab.lib.styles import getSampleStyleSheet
             from reportlab.lib.units import mm
         except ImportError:
-            self._toast.show_toast("pip install reportlab  for PDF export", "error"); return
+            self._toast.show_toast("pip install reportlab for PDF export", "error"); return
 
         path, _ = QFileDialog.getSaveFileName(
             self, "Export PDF",
@@ -1416,6 +1444,9 @@ class TimesheetApp(QMainWindow):
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 def main():
+    import os
+    os.environ["QT_WAYLAND_APP_ID"] = "timesheet"
+    
     app = QApplication(sys.argv)
     app.setApplicationName("Timesheet")
     for fp in [
