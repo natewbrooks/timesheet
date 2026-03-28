@@ -71,7 +71,8 @@ class ToastItem(QWidget):
             }}
         """)
         x_btn.clicked.connect(self._dismiss)
-        layout.addWidget(x_btn, 0, Qt.AlignmentFlag.AlignTop)
+        layout.addWidget(x_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         self.setFixedWidth(TOAST_W)
         # Let height grow with content

@@ -1217,12 +1217,12 @@ class TimesheetApp(QMainWindow):
         deadline    = self._current_sheet.get("deadline_day", "tuesday").capitalize()
 
         if remaining == 0:
-            self._toast.show_toast("Target reached — great work!", "success")
+            self._toast.show_toast("Target reached - W!", "success")
         else:
             days_left = self._get_days_remaining()
             per_day = remaining / days_left
             self._toast.show_toast(
-                f"{D.format_hm_pretty(remaining)} left · {today_name} · "
+                f"{D.format_hm_pretty(remaining)} remaining.  "
                 f"{D.format_hm_pretty(int(per_day))}/day to hit goal by {deadline}", "info"
             )
 
