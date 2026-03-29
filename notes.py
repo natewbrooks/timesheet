@@ -32,7 +32,6 @@ class NoteEditor(QTextEdit):
         super().__init__(parent)
         self._C = C
         self.setAcceptRichText(True)
-        # Placeholder only when truly empty (no text, no list)
         self.setPlaceholderText("Notes…")
         self._debounce = QTimer()
         self._debounce.setSingleShot(True)
@@ -40,10 +39,6 @@ class NoteEditor(QTextEdit):
         self.textChanged.connect(self._on_text_changed)
 
     def _on_text_changed(self):
-        # Hide placeholder when there's a list even if text content is empty
-        has_list = self.textCursor().currentList() is not None
-        doc_text = self.toPlainText().strip()
-        # If document has any content at all (including list structure), suppress placeholder
         if self.document().characterCount() > 1:
             self.setPlaceholderText("")
         else:
@@ -65,7 +60,6 @@ class NoteEditor(QTextEdit):
         if key == Qt.Key.Key_Tab and not ctrl:
             if cursor.currentList():
                 self._change_indent(+1); return
-            # Not in list — insert normal tab
         if key == Qt.Key.Key_Backtab:
             if cursor.currentList():
                 self._change_indent(-1); return
@@ -75,9 +69,7 @@ class NoteEditor(QTextEdit):
             if cursor.currentList():
                 block_text = cursor.block().text().strip()
                 if not block_text or block_text in ("[ ]", "[x]", "☐", "☑"):
-                    # Empty item → exit list
                     self._exit_list(); return
-                # Checklist: auto-prefix next item
                 if block_text.startswith("[ ]") or block_text.startswith("[x]"):
                     super().keyPressEvent(event)
                     cursor2 = self.textCursor()
@@ -110,10 +102,17 @@ class NoteEditor(QTextEdit):
         lst    = cursor.currentList()
         if not lst:
             return
-        fmt    = QTextListFormat(lst.format())
-        new_i  = max(1, min(8, fmt.indent() + direction))
-        if direction == +1 and new_i > fmt.indent():
-            # Create a new sub-list with its own format
+        fmt   = QTextListFormat(lst.format())
+        new_i = max(1, min(8, fmt.indent() + direction))
+
+        if direction == -1 and new_i < fmt.indent():
+            # Outdent: if already at indent 1, exit the list entirely
+            if fmt.indent() <= 1:
+                self._exit_list()
+                return
+            fmt.setIndent(new_i)
+            lst.setFormat(fmt)
+        elif direction == +1 and new_i > fmt.indent():
             new_fmt = QTextListFormat()
             new_fmt.setStyle(
                 QTextListFormat.Style.ListCircle if new_i % 2 == 0
@@ -122,27 +121,26 @@ class NoteEditor(QTextEdit):
             )
             new_fmt.setIndent(new_i)
             cursor.createList(new_fmt)
-        else:
-            fmt.setIndent(new_i)
-            lst.setFormat(fmt)
 
     def _exit_list(self):
         cursor = self.textCursor()
-        # Remove the empty list item and break out
+        # Select and remove the empty list item text
         cursor.select(QTextCursor.SelectionType.BlockUnderCursor)
         cursor.removeSelectedText()
+        # Remove the list format from the block
         block_fmt = QTextBlockFormat()
         block_fmt.setIndent(0)
+        block_fmt.setObjectIndex(-1)
         cursor.setBlockFormat(block_fmt)
+        # Apply plain char format to break out of list
+        char_fmt = QTextCharFormat()
+        cursor.setCharFormat(char_fmt)
         self.setTextCursor(cursor)
-        # Insert a newline outside the list
-        cursor.insertBlock()
 
 
 class NotesOverlay(QWidget):
     """
     Full-app overlay: covers everything below the topbar row.
-    Not a side panel — takes full width and height of the content area.
     """
     notes_changed = pyqtSignal(dict)
     closed        = pyqtSignal()
@@ -158,12 +156,14 @@ class NotesOverlay(QWidget):
         self._on_next      = None
         self._editors: dict[str, NoteEditor] = {}
         self._preview_mode = False
+        # Must be a child widget that renders on top — raise_ handles z-order
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.hide()
         self._build()
 
     def _build(self):
         C = self._C
-        self.setStyleSheet(f"background: {C['surface']};")
+        self.setStyleSheet(f"NotesOverlay {{ background: {C['surface']}; }}")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -411,3 +411,8 @@ class NotesOverlay(QWidget):
             self._close_overlay()
         else:
             super().keyPressEvent(event)
+
+    # ── Resize: fill parent properly ───────────────────────────────────────────
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
